@@ -1,0 +1,8 @@
+{
+  "name": "المحاسب anas برو",
+  "description": "تطبيق محاسبي وإدارة مبيعات متقدم يعمل بالكامل بدون إنترنت، ويوفر أتمتة الإشعارات (واتساب/رسائل نصية) وتصدير كشوف الحسابات إلى PDF والنسخ الاحتياطي السحابي والمحلي.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

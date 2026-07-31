@@ -24,8 +24,27 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Ensure Gradle wrapper is present
+        run: |
+          echo "Workspace: $(pwd)"
+          echo "Listing top-level files:"
+          ls -la
+          if [ -f ./gradlew ]; then
+            echo "gradlew found"
+          else
+            echo "gradlew not found — attempting to generate wrapper"
+            # Try to generate the wrapper using the Gradle installed by setup-gradle
+            if command -v gradle >/dev/null 2>&1; then
+              gradle wrapper --gradle-version 8.4 || gradle wrapper || true
+            else
+              echo "gradle command not available; wrapper generation skipped."
+              echo "Best option: add the gradle wrapper files to the repo or set working-directory to where the wrapper exists."
+              exit 0
+            fi
+          fi
+
       - name: Grant Executable Permission
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug

@@ -439,7 +439,7 @@ fun EntriesScreen(
                                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                                     .clip(RoundedCornerShape(16.dp))
                             ) {
-                                Column(modifier = Modifier.width(620.dp)) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
                                     // Table Header Raw
                                     Row(
                                         modifier = Modifier

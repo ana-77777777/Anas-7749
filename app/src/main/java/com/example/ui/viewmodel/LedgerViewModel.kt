@@ -24,6 +24,7 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val repository: LedgerRepository
     private val prefs = application.getSharedPreferences("pro_ledger_prefs", Context.MODE_PRIVATE)
+    private val securePrefs = com.example.utils.SecurePreferences(application)
 
     // --- Premium Inventory System ---
     private val _inventoryItems = MutableStateFlow<List<InventoryItem>>(listOf())
@@ -35,6 +36,10 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _securityPin = MutableStateFlow(prefs.getString("security_pin", "") ?: "")
     val securityPin: StateFlow<String> = _securityPin.asStateFlow()
+
+    fun verifyEnteredPin(enteredPin: String): Boolean {
+        return securePrefs.verifyPin(enteredPin) || enteredPin == _securityPin.value
+    }
 
     // Cloud Admin & Sync Settings
     private val _cloudClientId = MutableStateFlow(prefs.getString("cloud_client_id", "anas-pro-${(1000..9999).random()}") ?: "anas-pro-client-7700")
@@ -202,6 +207,7 @@ class LedgerViewModel(application: Application) : AndroidViewModel(application) 
             putString("security_pin", pin)
             apply()
         }
+        securePrefs.saveHashedPin(pin)
         _isSecurityEnabled.value = enabled
         _securityPin.value = pin
     }

@@ -1,10 +1,14 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,11 +21,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
+import com.example.ui.theme.AppColors
+import com.example.ui.theme.AppDimensions
+import com.example.ui.theme.AppShapes
+import com.example.ui.theme.AppSpacing
+import com.example.ui.theme.threeDShadow
+import com.example.ui.theme.threeDTiltEffect
+import com.example.ui.theme.LocalWindowSizeClass
+import com.example.ui.theme.WindowSizeClass
 import com.example.ui.viewmodel.AccountWithBalance
 import com.example.ui.viewmodel.LedgerViewModel
 import java.text.SimpleDateFormat
@@ -37,17 +51,15 @@ fun DashboardScreen(
     val accountsWithBalance by viewModel.accountsWithBalance.collectAsState()
     val transactions by viewModel.allTransactions.collectAsState()
     val defaultCurrency by viewModel.defaultCurrency.collectAsState()
+    val windowSizeClass = LocalWindowSizeClass.current
 
-    // Compute Metrics
     val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     val todayStr = sdf.format(Date())
 
-    // 1. Daily Earnings (Total invoices created today in base currency)
     val dailyEarnings = transactions.filter { 
         it.date == todayStr && !it.isPayment
     }.sumOf { it.total * it.exchangeRate }
 
-    // 2. Weekly Earnings (Last 7 days in base currency)
     val calendar = Calendar.getInstance()
     val nowMs = calendar.timeInMillis
     calendar.add(Calendar.DAY_OF_YEAR, -7)
@@ -56,7 +68,6 @@ fun DashboardScreen(
         it.timestamp in sevenDaysAgoMs..nowMs && !it.isPayment
     }.sumOf { it.total * it.exchangeRate }
 
-    // 3. Monthly Earnings (Last 30 days in base currency)
     calendar.timeInMillis = nowMs
     calendar.add(Calendar.DAY_OF_YEAR, -30)
     val thirtyDaysAgoMs = calendar.timeInMillis
@@ -64,13 +75,10 @@ fun DashboardScreen(
         it.timestamp in thirtyDaysAgoMs..nowMs && !it.isPayment
     }.sumOf { it.total * it.exchangeRate }
 
-    // 4. Summaries separation:
-    // Debtors (المدينين - Customers who owe us money)
     val debtorsTotal = accountsWithBalance
         .filter { it.account.type == "مشتري" && it.balance > 0 }
         .sumOf { it.balance }
 
-    // Creditors (الدائنين - Suppliers we owe money to)
     val creditorsTotal = accountsWithBalance
         .filter { it.account.type == "مورد" && it.balance > 0 }
         .sumOf { it.balance }
@@ -79,23 +87,27 @@ fun DashboardScreen(
     val debtorsFraction = if (totalF > 0) (debtorsTotal / totalF).toFloat() else 0.75f
     val creditorsFraction = if (totalF > 0) (creditorsTotal / totalF).toFloat() else 0.33f
 
+    // Account Alerts (accounts over credit limit)
+    val overLimitAccounts = accountsWithBalance.filter {
+        it.account.creditLimit > 0 && it.balance > it.account.creditLimit
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(AppSpacing.normal),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.normal)
     ) {
-        // App branding banner with customized logo and titles
+        // App branding banner
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 4.dp),
+                    .padding(bottom = AppSpacing.extraSmall),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: app status subtheme
                 Column(horizontalAlignment = Alignment.Start) {
                     Text(
                         text = "نظام لإدارة الحسابات",
@@ -113,14 +125,13 @@ fun DashboardScreen(
                     )
                 }
 
-                // Right: Logo thumbnail + title
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
-                        modifier = Modifier.padding(end = 12.dp)
+                        modifier = Modifier.padding(end = AppSpacing.medium)
                     ) {
                         Text(
                             text = "المحاسب anas برو",
@@ -138,22 +149,52 @@ fun DashboardScreen(
                         )
                     }
 
-                    // Display newly generated beautiful logo image with modern border and roundness
-                    androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.anas_pro_logo_1781236904612),
+                    Image(
+                        painter = painterResource(id = R.drawable.anas_pro_logo_1781236904612),
                         contentDescription = "شعار المحاسب برو",
                         modifier = Modifier
                             .size(54.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(AppShapes.medium)
                             .background(MaterialTheme.colorScheme.surface)
                     )
                 }
             }
         }
 
-        // Welcome and Header (Now displaying High Density Net Balance Available)
+        // Header Section
         item {
-            HeaderSection(netBalance = debtorsTotal - creditorsTotal, defaultCurrency = defaultCurrency)
+            Box(modifier = Modifier.threeDTiltEffect().threeDShadow(12.dp)) {
+                HeaderSection(netBalance = debtorsTotal - creditorsTotal, defaultCurrency = defaultCurrency)
+            }
+        }
+
+        // Account Alerts Banner if any account exceeds limit
+        if (overLimitAccounts.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = AppShapes.normal
+                ) {
+                    Row(
+                        modifier = Modifier.padding(AppSpacing.medium),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.small)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "تنبيه الحد الائتماني",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = "تنبيه: يوجد ${overLimitAccounts.size} حساب متجاوز للحد الائتماني المسموح به!",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
         }
 
         // Voice Smart Entry Premium Assistant Banner
@@ -165,14 +206,14 @@ fun DashboardScreen(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                 ),
-                shape = RoundedCornerShape(20.dp),
+                shape = AppShapes.large,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(AppSpacing.medium),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.medium),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -184,7 +225,7 @@ fun DashboardScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Mic,
-                            contentDescription = null,
+                            contentDescription = "المساعد الصوتي الذكي",
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(24.dp)
                         )
@@ -202,7 +243,7 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "اضغط لنطق المعاملة بالصوت (أوفلاين) ليقوم المساعد الذكي باستخلاصها وقيدها فورا في حساب العميل أو المورد تلقائياً!",
+                            text = "اضغط لنطق المعاملة بالصوت ليقوم المساعد الذكي باستخلاصها وقيدها تلقائياً!",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Right,
@@ -215,41 +256,66 @@ fun DashboardScreen(
 
         // Key Finance Cards Row (Debtors vs Creditors)
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                SummaryCard(
-                    title = "المدينون (عملاء)",
-                    amount = debtorsTotal,
-                    color = MaterialTheme.colorScheme.primary,
-                    icon = Icons.Default.TrendingUp,
-                    progressFraction = debtorsFraction,
-                    defaultCurrency = defaultCurrency,
-                    modifier = Modifier.weight(1f)
-                )
-                SummaryCard(
-                    title = "الدائنون (موردون)",
-                    amount = creditorsTotal,
-                    color = MaterialTheme.colorScheme.error,
-                    icon = Icons.Default.TrendingDown,
-                    progressFraction = creditorsFraction,
-                    defaultCurrency = defaultCurrency,
-                    modifier = Modifier.weight(1f)
-                )
+            if (windowSizeClass != WindowSizeClass.COMPACT) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.medium)
+                ) {
+                    SummaryCard(
+                        title = "المدينون (عملاء)",
+                        amount = debtorsTotal,
+                        color = MaterialTheme.colorScheme.primary,
+                        icon = Icons.Default.TrendingUp,
+                        progressFraction = debtorsFraction,
+                        defaultCurrency = defaultCurrency,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SummaryCard(
+                        title = "الدائنون (موردون)",
+                        amount = creditorsTotal,
+                        color = MaterialTheme.colorScheme.error,
+                        icon = Icons.Default.TrendingDown,
+                        progressFraction = creditorsFraction,
+                        defaultCurrency = defaultCurrency,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.small)
+                ) {
+                    SummaryCard(
+                        title = "المدينون (عملاء)",
+                        amount = debtorsTotal,
+                        color = MaterialTheme.colorScheme.primary,
+                        icon = Icons.Default.TrendingUp,
+                        progressFraction = debtorsFraction,
+                        defaultCurrency = defaultCurrency,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SummaryCard(
+                        title = "الدائنون (موردون)",
+                        amount = creditorsTotal,
+                        color = MaterialTheme.colorScheme.error,
+                        icon = Icons.Default.TrendingDown,
+                        progressFraction = creditorsFraction,
+                        defaultCurrency = defaultCurrency,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
 
-        // Widgets for daily, weekly, monthly transactions
+        // Sales Activity Indicators Widget
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(28.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                shape = AppShapes.extraLarge,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(AppSpacing.normal)) {
                     Text(
                         text = "مؤشرات حركة المبيعات (الأنشطة)",
                         fontSize = 15.sp,
@@ -258,19 +324,19 @@ fun DashboardScreen(
                         textAlign = TextAlign.Right,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 16.dp)
+                            .padding(bottom = AppSpacing.normal)
                     )
 
-                    MetricRow(label = "مبيعات وإيرادات اليوم", amount = dailyEarnings, color = Color(0xFF22C55E), defaultCurrency = defaultCurrency)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    MetricRow(label = "حركة الـ 7 أيام الأخيرة", amount = weeklyEarnings, color = Color(0xFFEAB308), defaultCurrency = defaultCurrency)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    MetricRow(label = "حركة الـ 30 يوماً الأخيرة", amount = monthlyEarnings, color = Color(0xFF3B82F6), defaultCurrency = defaultCurrency)
+                    MetricRow(label = "مبيعات وإيرادات اليوم", amount = dailyEarnings, color = AppColors.SuccessGreen, defaultCurrency = defaultCurrency)
+                    Spacer(modifier = Modifier.height(AppSpacing.medium))
+                    MetricRow(label = "حركة الـ 7 أيام الأخيرة", amount = weeklyEarnings, color = AppColors.WarningAmber, defaultCurrency = defaultCurrency)
+                    Spacer(modifier = Modifier.height(AppSpacing.medium))
+                    MetricRow(label = "حركة الـ 30 يوماً الأخيرة", amount = monthlyEarnings, color = AppColors.InfoBlue, defaultCurrency = defaultCurrency)
                 }
             }
         }
 
-        // Recent Accounts Header
+        // Recent Active Accounts Header
         item {
             Text(
                 text = "الحسابات النشطة مؤخراً",
@@ -280,34 +346,42 @@ fun DashboardScreen(
                 textAlign = TextAlign.Right,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = AppSpacing.extraSmall)
             )
         }
 
-        // Recents List
+        // Active Accounts List
         val activeAccounts = accountsWithBalance.filter { it.transactionCount > 0 }.take(5)
         if (activeAccounts.isEmpty()) {
             item {
-                Box(
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(vertical = AppSpacing.small),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = AppShapes.normal
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.AccountBalanceWallet,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "لا توجد حركات حساب حالية. ابدأ بإضافة الحسابات والعمليات اليومية.",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(AppSpacing.extraLarge),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.AccountBalanceWallet,
+                                contentDescription = "لا توجد حركات",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(AppSpacing.small))
+                            Text(
+                                text = "لا توجد حركات حساب حالية. ابدأ بإضافة الحسابات والعمليات اليومية.",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
@@ -320,7 +394,7 @@ fun DashboardScreen(
         }
         
         item {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(AppSpacing.normal))
         }
     }
 
@@ -340,13 +414,13 @@ fun HeaderSection(netBalance: Double, defaultCurrency: String) {
             .fillMaxWidth()
             .height(128.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        shape = RoundedCornerShape(28.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = AppShapes.extraLarge,
+        elevation = CardDefaults.cardElevation(defaultElevation = AppDimensions.cardElevation)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
+                .padding(AppSpacing.large),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
@@ -356,9 +430,9 @@ fun HeaderSection(netBalance: Double, defaultCurrency: String) {
             ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppShapes.small)
                         .background(Color.White.copy(alpha = 0.2f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = AppSpacing.small, vertical = AppSpacing.extraSmall),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -421,14 +495,13 @@ fun SummaryCard(
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(28.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = AppShapes.extraLarge,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(AppSpacing.normal),
             horizontalAlignment = Alignment.End
         ) {
             Text(
@@ -458,19 +531,19 @@ fun SummaryCard(
                 textAlign = TextAlign.Right,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(AppSpacing.small))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)
-                    .clip(RoundedCornerShape(100.dp))
+                    .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(progressFraction.coerceIn(0f, 1f))
-                        .clip(RoundedCornerShape(100.dp))
+                        .clip(CircleShape)
                         .background(color)
                 )
             }
@@ -511,21 +584,19 @@ fun MetricRow(
             )
         }
         Spacer(modifier = Modifier.height(6.dp))
-        // Simple visual bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
-                .clip(RoundedCornerShape(100.dp))
+                .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
         ) {
-            // Fraction simulation
             val fraction = if (amount > 0) 0.65f else 0f
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(fraction)
-                    .clip(RoundedCornerShape(100.dp))
+                    .clip(CircleShape)
                     .background(color)
             )
         }
@@ -543,19 +614,17 @@ fun ActiveAccountRow(
             .fillMaxWidth()
             .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = AppShapes.normal,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(AppSpacing.medium),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Left: balance amount
-            val balanceColor = if (item.balance >= 0) Color(0xFF15803D) else Color(0xFFB91C1C)
+            val balanceColor = if (item.balance >= 0) AppColors.SuccessGreen else AppColors.DangerRed
             val balanceSignText = if (item.balance >= 0) "له/عليه" else "زيادة"
             Column(horizontalAlignment = Alignment.Start) {
                 val sym = when (defaultCurrency) {
@@ -577,10 +646,9 @@ fun ActiveAccountRow(
                 )
             }
 
-            // Right: profile name and type badge
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.medium)
             ) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
@@ -598,12 +666,12 @@ fun ActiveAccountRow(
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppShapes.small)
                         .background(
                             if (item.account.type == "مورد") MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                             else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)
                         )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = AppSpacing.small, vertical = AppSpacing.extraSmall),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

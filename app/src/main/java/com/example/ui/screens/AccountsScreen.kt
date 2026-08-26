@@ -10,10 +10,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -24,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +35,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Account
+import com.example.ui.theme.AppColors
+import com.example.ui.theme.AppDimensions
+import com.example.ui.theme.AppShapes
+import com.example.ui.theme.AppSpacing
+import com.example.ui.theme.threeDShadow
+import com.example.ui.theme.threeDTiltEffect
+import com.example.ui.theme.LocalWindowSizeClass
+import com.example.ui.theme.WindowSizeClass
 import com.example.ui.viewmodel.AccountWithBalance
 import com.example.ui.viewmodel.LedgerViewModel
 import java.util.*
@@ -42,23 +54,23 @@ fun AccountsScreen(
     onNavigateToAccount: (Int) -> Unit
 ) {
     val context = LocalContext.current
+    val windowSizeClass = LocalWindowSizeClass.current
 
     val accountsWithBalance by viewModel.accountsWithBalance.collectAsState()
     val defaultCurrency by viewModel.defaultCurrency.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    var selectedFilterType by remember { mutableStateOf("الكل") }
     var showAddDialog by remember { mutableStateOf(false) }
 
-    // Dialog state
     var newName by remember { mutableStateOf("") }
     var newPhone by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf("مشتري") } // Default: مشتري (Customer)
-    var shareTarget by remember { mutableStateOf("NONE") } // "NONE", "WHATSAPP", "SMS"
+    var selectedType by remember { mutableStateOf("مشتري") }
+    var shareTarget by remember { mutableStateOf("NONE") }
     var nameError by remember { mutableStateOf(false) }
     var newCreditLimit by remember { mutableStateOf("") }
     var newTagBy by remember { mutableStateOf("") }
     var newInitialBalance by remember { mutableStateOf("") }
 
-    // Edit Account Dialog state
     var editingAccount by remember { mutableStateOf<Account?>(null) }
     var editName by remember { mutableStateOf("") }
     var editPhone by remember { mutableStateOf("") }
@@ -68,7 +80,6 @@ fun AccountsScreen(
     var editInitialBalance by remember { mutableStateOf("0.0") }
     var editNameError by remember { mutableStateOf(false) }
 
-    // Contact Picker Launcher
     val contactPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickContact()
     ) { uri ->
@@ -104,10 +115,8 @@ fun AccountsScreen(
                                 }
                             }
                             
-                            // Remove spaces or parentheses in phone number if needed
                             val cleanPhone = contactPhone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
                             
-                            // Check which dialog is current
                             if (editingAccount != null) {
                                 editName = contactName
                                 editPhone = cleanPhone
@@ -124,7 +133,6 @@ fun AccountsScreen(
         }
     }
 
-    // Permission Launcher
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -151,10 +159,17 @@ fun AccountsScreen(
         }
     }
 
-    // Filtered accounts
     val filteredAccounts = accountsWithBalance.filter {
-        it.account.name.contains(searchQuery, ignoreCase = true) ||
-        it.account.phone.contains(searchQuery)
+        val matchesQuery = it.account.name.contains(searchQuery, ignoreCase = true) ||
+                it.account.phone.contains(searchQuery) ||
+                it.account.tag.contains(searchQuery, ignoreCase = true)
+        val matchesFilter = when (selectedFilterType) {
+            "عملاء" -> it.account.type == "مشتري"
+            "موردون" -> it.account.type == "مورد"
+            "صناديق" -> it.account.type == "صندوق"
+            else -> true
+        }
+        matchesQuery && matchesFilter
     }
 
     Scaffold(
@@ -173,12 +188,12 @@ fun AccountsScreen(
                 },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(AppSpacing.normal)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = AppSpacing.normal),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.small)
                 ) {
                     Text(text = "إضافة حساب جديد", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Icon(imageVector = Icons.Default.Add, contentDescription = "إضافة حساب")
@@ -193,9 +208,8 @@ fun AccountsScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
-                .padding(16.dp)
+                .padding(AppSpacing.normal)
         ) {
-            // Screen Header Title
             Text(
                 text = "إدارة الحسابات والعملاء",
                 fontSize = 20.sp,
@@ -204,19 +218,19 @@ fun AccountsScreen(
                 textAlign = TextAlign.Right,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = AppSpacing.normal)
             )
 
-            // Smart Search Bar
+            // Search input
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = AppSpacing.small),
                 placeholder = {
                     Text(
-                        text = "ابحث بالاسم أو رقم الهاتف...",
+                        text = "ابحث بالاسم أو رقم الهاتف أو الوسم...",
                         textAlign = TextAlign.Right,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -224,11 +238,11 @@ fun AccountsScreen(
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = null,
+                        contentDescription = "بحث",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 },
-                shape = RoundedCornerShape(28.dp),
+                shape = AppShapes.extraLarge,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
@@ -238,7 +252,24 @@ fun AccountsScreen(
                 singleLine = true
             )
 
-            // Accounts List
+            // Filter Tags Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = AppSpacing.normal),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.small)
+            ) {
+                listOf("الكل", "عملاء", "موردون", "صناديق").forEach { filterLabel ->
+                    val isSelected = selectedFilterType == filterLabel
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedFilterType = filterLabel },
+                        label = { Text(filterLabel, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                    )
+                }
+            }
+
+            // Responsive Layout List/Grid
             if (filteredAccounts.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -248,11 +279,11 @@ fun AccountsScreen(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.small)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Group,
-                            contentDescription = null,
+                            contentDescription = "لا يوجد حسابات",
                             modifier = Modifier.size(64.dp),
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
                         )
@@ -264,28 +295,36 @@ fun AccountsScreen(
                         )
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            } else if (windowSizeClass != WindowSizeClass.COMPACT) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.medium),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.medium)
                 ) {
                     items(filteredAccounts) { accountItem ->
                         AccountItemCard(
                             item = accountItem,
                             defaultCurrency = defaultCurrency,
-                            onClick = {
-                                onNavigateToAccount(accountItem.account.id)
-                            },
-                            onDelete = {
-                                viewModel.deleteAccount(accountItem.account)
-                            },
-                            onEdit = {
-                                editingAccount = accountItem.account
-                            }
+                            onClick = { onNavigateToAccount(accountItem.account.id) },
+                            onDelete = { viewModel.deleteAccount(accountItem.account) },
+                            onEdit = { editingAccount = accountItem.account }
                         )
                     }
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp)) // Avoid list from overlapping with FAB
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.medium)
+                ) {
+                    items(filteredAccounts) { accountItem ->
+                        AccountItemCard(
+                            item = accountItem,
+                            defaultCurrency = defaultCurrency,
+                            onClick = { onNavigateToAccount(accountItem.account.id) },
+                            onDelete = { viewModel.deleteAccount(accountItem.account) },
+                            onEdit = { editingAccount = accountItem.account }
+                        )
                     }
                 }
             }
@@ -308,10 +347,9 @@ fun AccountsScreen(
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.medium),
                     horizontalAlignment = Alignment.End
                 ) {
-                    // Name Field
                     OutlinedTextField(
                         value = newName,
                         onValueChange = {
@@ -321,7 +359,7 @@ fun AccountsScreen(
                         label = { Text("الاسم الكامل للحساب *") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = nameError,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         singleLine = true
                     )
                     if (nameError) {
@@ -334,13 +372,12 @@ fun AccountsScreen(
                         )
                     }
 
-                    // Phone Field
                     OutlinedTextField(
                         value = newPhone,
                         onValueChange = { newPhone = it },
                         label = { Text("رقم الهاتف / الواتساب") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         singleLine = true,
                         trailingIcon = {
@@ -370,65 +407,61 @@ fun AccountsScreen(
                         }
                     )
 
-                    // Initial Current Balance Field
                     OutlinedTextField(
                         value = newInitialBalance,
                         onValueChange = { newInitialBalance = it },
                         label = { Text("الرصيد الحالي / البادئ للافتتاح (اختياري)") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
 
-                    // Credit Limit Field
                     OutlinedTextField(
                         value = newCreditLimit,
                         onValueChange = { newCreditLimit = it },
                         label = { Text("سقف الدين الأقصى (اختياري)") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
 
-                    // Tag Field
                     OutlinedTextField(
                         value = newTagBy,
                         onValueChange = { newTagBy = it },
                         label = { Text("العلامات / الوسوم (مثال: هام، تجزئة)") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         singleLine = true
                     )
 
-                    // Account Type Toggle Option (مشتري / عميل or مورد / دائن)
                     Text(
                         text = "نوع الحساب المالي:",
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = AppSpacing.small)
                     )
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(AppShapes.small)
                             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(AppSpacing.extraSmall),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.extraSmall)
                     ) {
                         listOf("مشتري" to "مشتري / عـميل", "مورد" to "مورد / دائن", "صندوق" to "خزينة / صندوق").forEach { (typeKey, typeLabel) ->
                             val isSelected = selectedType == typeKey
-                            val activeBg = if (typeKey == "صندوق") Color(0xFFCA8A04) else MaterialTheme.colorScheme.primary
+                            val activeBg = if (typeKey == "صندوق") AppColors.WarningAmber else MaterialTheme.colorScheme.primary
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(AppShapes.small)
                                     .background(if (isSelected) activeBg else Color.Transparent)
                                     .clickable { selectedType = typeKey }
-                                    .padding(vertical = 10.dp),
+                                    .padding(vertical = AppSpacing.small),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -439,110 +472,6 @@ fun AccountsScreen(
                                 )
                             }
                         }
-                    }
-
-                    // Auto share options
-                    Text(
-                        text = "مشاركة بيانات الحساب بعد الحفظ تلقائياً:",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // SMS Button
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (shareTarget == "SMS") MaterialTheme.colorScheme.primary else Color.Transparent)
-                                .clickable { shareTarget = "SMS" }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sms,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = if (shareTarget == "SMS") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "رسالة SMS",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp,
-                                    color = if (shareTarget == "SMS") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        // WhatsApp Button
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (shareTarget == "WHATSAPP") Color(0xFF25D366) else Color.Transparent)
-                                .clickable { shareTarget = "WHATSAPP" }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Send,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = if (shareTarget == "WHATSAPP") Color.White else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "واتساب",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp,
-                                    color = if (shareTarget == "WHATSAPP") Color.White else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        // NONE Button
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (shareTarget == "NONE") MaterialTheme.colorScheme.primary else Color.Transparent)
-                                .clickable { shareTarget = "NONE" }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "عدم الإرسال",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp,
-                                color = if (shareTarget == "NONE") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    if (newPhone.trim().isEmpty() && shareTarget != "NONE") {
-                        Text(
-                            text = "⚠️ يرجى تعبئة حقل رقم الهاتف لتفعيل إرسال الرسالة.",
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Right,
-                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
-                        )
                     }
                 }
             },
@@ -609,10 +538,9 @@ fun AccountsScreen(
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.medium),
                     horizontalAlignment = Alignment.End
                 ) {
-                    // Name Field
                     OutlinedTextField(
                         value = editName,
                         onValueChange = {
@@ -622,7 +550,7 @@ fun AccountsScreen(
                         label = { Text("الاسم الكامل للحساب *") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = editNameError,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         singleLine = true
                     )
                     if (editNameError) {
@@ -635,13 +563,12 @@ fun AccountsScreen(
                         )
                     }
 
-                    // Phone Field
                     OutlinedTextField(
                         value = editPhone,
                         onValueChange = { editPhone = it },
                         label = { Text("رقم الهاتف / الواتساب") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         singleLine = true,
                         trailingIcon = {
@@ -671,44 +598,42 @@ fun AccountsScreen(
                         }
                     )
 
-                    // Initial Current Balance Field
                     OutlinedTextField(
                         value = editInitialBalance,
                         onValueChange = { editInitialBalance = it },
                         label = { Text("الرصيد الحالي / البادئ للافتتاح") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
 
-                    // Account Type Toggle Option (مشتري / عميل or مورد / دائن)
                     Text(
                         text = "نوع الحساب المالي:",
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = AppSpacing.small)
                     )
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(AppShapes.small)
                             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(AppSpacing.extraSmall),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.extraSmall)
                     ) {
                         listOf("مشتري" to "مشتري / عـميل", "مورد" to "مورد / دائن", "صندوق" to "خزينة / صندوق").forEach { (typeKey, typeLabel) ->
                             val isSelected = editType == typeKey
-                            val activeBg = if (typeKey == "صندوق") Color(0xFFCA8A04) else MaterialTheme.colorScheme.primary
+                            val activeBg = if (typeKey == "صندوق") AppColors.WarningAmber else MaterialTheme.colorScheme.primary
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(AppShapes.small)
                                     .background(if (isSelected) activeBg else Color.Transparent)
                                     .clickable { editType = typeKey }
-                                    .padding(vertical = 10.dp),
+                                    .padding(vertical = AppSpacing.small),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -721,24 +646,22 @@ fun AccountsScreen(
                         }
                     }
 
-                    // Credit Limit Field Description
                     OutlinedTextField(
                         value = editCreditLimit,
                         onValueChange = { editCreditLimit = it },
                         label = { Text("سقف الدين الأقصى (اختياري)") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
 
-                    // Tag Field Description
                     OutlinedTextField(
                         value = editTag,
                         onValueChange = { editTag = it },
                         label = { Text("العلامات / الوسوم (مثال: هام، تجزئة)") },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = AppShapes.small,
                         singleLine = true
                     )
                 }
@@ -791,20 +714,20 @@ fun AccountItemCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .threeDTiltEffect()
+            .threeDShadow(6.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(28.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = AppShapes.extraLarge,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(AppSpacing.medium),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Options Menu
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
@@ -825,7 +748,7 @@ fun AccountItemCard(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("كشف كلي PDF", textAlign = TextAlign.Right)
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(AppSpacing.small))
                                 Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                         },
@@ -834,7 +757,7 @@ fun AccountItemCard(
                             onClick()
                         }
                     )
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                     DropdownMenuItem(
                         text = {
                             Row(
@@ -843,7 +766,7 @@ fun AccountItemCard(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("تعديل بيانات الحساب", textAlign = TextAlign.Right)
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(AppSpacing.small))
                                 Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                         },
@@ -852,7 +775,7 @@ fun AccountItemCard(
                             onEdit()
                         }
                     )
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                     DropdownMenuItem(
                         text = {
                             Row(
@@ -861,7 +784,7 @@ fun AccountItemCard(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("حذف الحساب نهائياً", color = MaterialTheme.colorScheme.error)
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(AppSpacing.small))
                                 Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                             }
                         },
@@ -873,12 +796,11 @@ fun AccountItemCard(
                 }
             }
 
-            // Left: Account current balance info
-            val balanceColor = if (item.balance >= 0) Color(0xFF15803D) else Color(0xFFB91C1C)
+            val balanceColor = if (item.balance >= 0) AppColors.SuccessGreen else AppColors.DangerRed
             val balanceSignText = if (item.balance >= 0) "له/عليه" else "واصل زيادة"
             Column(
                 horizontalAlignment = Alignment.Start,
-                modifier = Modifier.padding(start = 8.dp)
+                modifier = Modifier.padding(start = AppSpacing.small)
             ) {
                 val defaultCurrencySymbolField = when (defaultCurrency) {
                     "USD" -> "$"
@@ -899,7 +821,6 @@ fun AccountItemCard(
                 )
             }
 
-            // Right: Account Name and Phone, Type badge
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
@@ -907,7 +828,7 @@ fun AccountItemCard(
             ) {
                 Column(
                     horizontalAlignment = Alignment.End,
-                    modifier = Modifier.padding(end = 12.dp)
+                    modifier = Modifier.padding(end = AppSpacing.medium)
                 ) {
                     Text(
                         text = item.account.name,
@@ -926,13 +847,13 @@ fun AccountItemCard(
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppShapes.small)
                         .background(
                             if (item.account.type == "مورد") MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            else if (item.account.type == "صندوق") Color(0xFFCA8A04).copy(alpha = 0.12f)
+                            else if (item.account.type == "صندوق") AppColors.WarningAmber.copy(alpha = 0.12f)
                             else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)
                         )
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = AppSpacing.small, vertical = AppSpacing.extraSmall),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -940,7 +861,7 @@ fun AccountItemCard(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (item.account.type == "مورد") MaterialTheme.colorScheme.primary 
-                                else if (item.account.type == "صندوق") Color(0xFF3F2F00) 
+                                else if (item.account.type == "صندوق") AppColors.WarningAmber
                                 else MaterialTheme.colorScheme.onTertiary
                     )
                 }
@@ -958,7 +879,6 @@ private fun shareToWhatsApp(context: Context, phone: String, message: String) {
             cleanPhone = cleanPhone.substring(1)
         }
         
-        // standard country code if missing (e.g. Yemen country code 967)
         val formattedPhone = if (cleanPhone.length == 9 && cleanPhone.startsWith("7")) {
             "967$cleanPhone"
         } else if (cleanPhone.length == 9 && (cleanPhone.startsWith("1") || cleanPhone.startsWith("2"))) {
@@ -999,4 +919,3 @@ private fun shareViaSms(context: Context, phone: String, message: String) {
         context.startActivity(Intent.createChooser(shareIntent, "إرسال كرسالة تفصيلية"))
     }
 }
-

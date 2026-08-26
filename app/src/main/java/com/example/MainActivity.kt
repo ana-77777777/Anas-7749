@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,12 +27,22 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.example.navigation.Screen
 import com.example.ui.screens.AccountsScreen
 import com.example.ui.screens.AiAdvisorScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.EntriesScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.TrashScreen
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.ProvideWindowSizeClass
+import com.example.ui.theme.WindowSizeClass
+import com.example.ui.theme.rememberWindowSizeClass
 import com.example.ui.viewmodel.LedgerViewModel
 
 class MainActivity : ComponentActivity() {
@@ -40,22 +51,24 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                MainLayout()
+                ProvideWindowSizeClass {
+                    MainLayout()
+                }
             }
         }
     }
 }
 
 @Composable
-fun AppHeader(currentTab: Int, businessName: String, onLock: () -> Unit) {
+fun AppHeader(currentRoute: String?, businessName: String, onLock: () -> Unit) {
     val title = "المحاسب anas برو"
-    val subtext = when (currentTab) {
-        0 -> "Pro Ledger • لوحة التحكم"
-        1 -> "Pro Ledger • إدارة الحسابات"
-        2 -> "Pro Ledger • العمليات والقيود"
-        3 -> "Pro Ledger • تهيئة الإعدادات"
-        4 -> "Pro Ledger • المستشار المالي الذكي"
-        5 -> "Pro Ledger • سلة المحذوفات"
+    val subtext = when (currentRoute) {
+        Screen.Dashboard.route -> "Pro Ledger • لوحة التحكم"
+        Screen.Accounts.route -> "Pro Ledger • إدارة الحسابات"
+        Screen.Transactions.route -> "Pro Ledger • العمليات والقيود"
+        Screen.Settings.route -> "Pro Ledger • تهيئة الإعدادات"
+        Screen.AiAdvisor.route -> "Pro Ledger • المستشار المالي الذكي"
+        Screen.Trash.route -> "Pro Ledger • سلة المحذوفات"
         else -> "Pro Ledger"
     }
 
@@ -107,7 +120,6 @@ fun AppHeader(currentTab: Int, businessName: String, onLock: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Manual safety lock button
                     IconButton(
                         onClick = onLock,
                         modifier = Modifier
@@ -145,27 +157,29 @@ fun AppHeader(currentTab: Int, businessName: String, onLock: () -> Unit) {
 @Composable
 fun MainLayout() {
     val viewModel: LedgerViewModel = viewModel()
+    val navController = rememberNavController()
+    val windowSizeClass = rememberWindowSizeClass()
+
     val isSecurityEnabled by viewModel.isSecurityEnabled.collectAsState()
     val securityPin by viewModel.securityPin.collectAsState()
     
-    // Lock state on startup
     var isUnlocked by remember { mutableStateOf(false) }
-    var currentTab by remember { mutableStateOf(0) } // Tabs index: 0=Dashboard, 1=Accounts, 2=Entries, 3=Settings, 4=AI Advisor, 5=Trash
     val businessName by viewModel.businessName.collectAsState()
-    
-    val navigateToTrash: () -> Unit = { currentTab = 5 }
 
-    // Sync state if security configuration or pin changes dynamically
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Dashboard.route
+
     LaunchedEffect(isSecurityEnabled, securityPin) {
         if (!isSecurityEnabled) {
             isUnlocked = true
         }
     }
 
-    // Helper function to transition seamlessly from dashboard/accounts list to specific statements detail
     val navigateToAccountStatement: (Int) -> Unit = { accountId ->
         viewModel.selectAccount(accountId)
-        currentTab = 2 // Switch to Entries tab
+        navController.navigate(Screen.Transactions.route) {
+            launchSingleTop = true
+        }
     }
 
     if (!isUnlocked && isSecurityEnabled && securityPin.isNotBlank()) {
@@ -174,7 +188,6 @@ fun MainLayout() {
             onUnlockSuccess = { isUnlocked = true }
         )
     } else if (!isUnlocked && (!isSecurityEnabled || securityPin.isBlank())) {
-        // Beautiful PIN Onboarding Setup Screen for first time users or when protection is unconfigured
         PinSetupScreen(
             onPinSet = { newPin ->
                 viewModel.updateSecuritySettings(true, newPin)
@@ -189,94 +202,149 @@ fun MainLayout() {
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 AppHeader(
-                    currentTab = currentTab, 
+                    currentRoute = currentRoute,
                     businessName = businessName,
-                    onLock = {
-                        isUnlocked = false
-                    }
+                    onLock = { isUnlocked = false }
                 )
             },
             bottomBar = {
-                NavigationBar {
-                    // Settings Tab
-                    NavigationBarItem(
-                        selected = currentTab == 3,
-                        onClick = { currentTab = 3 },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = "الإعدادات") },
-                        label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                    )
-
-                    // AI Advisor Tab
-                    NavigationBarItem(
-                        selected = currentTab == 4,
-                        onClick = { currentTab = 4 },
-                        icon = { Icon(Icons.Default.Lightbulb, contentDescription = "المستشار") },
-                        label = { Text("المستشار", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                    )
-
-                    // Operations Tab
-                    NavigationBarItem(
-                        selected = currentTab == 2,
-                        onClick = { currentTab = 2 },
-                        icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "العمليات") },
-                        label = { Text("العمليات", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                    )
-
-                    // Accounts Tab
-                    NavigationBarItem(
-                        selected = currentTab == 1,
-                        onClick = { currentTab = 1 },
-                        icon = { Icon(Icons.Default.Group, contentDescription = "الحسابات") },
-                        label = { Text("الحسابات", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                    )
-
-                    // Dashboard Tab
-                    NavigationBarItem(
-                        selected = currentTab == 0,
-                        onClick = { currentTab = 0 },
-                        icon = { Icon(Icons.Default.Dashboard, contentDescription = "الرئيسية") },
-                        label = { Text("الرئيسية", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                    )
+                if (windowSizeClass == WindowSizeClass.COMPACT) {
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = currentRoute == Screen.Dashboard.route,
+                            onClick = { navController.navigate(Screen.Dashboard.route) { popUpTo(Screen.Dashboard.route) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                            icon = { Icon(Icons.Default.Dashboard, contentDescription = "الرئيسية") },
+                            label = { Text("الرئيسية", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = currentRoute == Screen.Accounts.route,
+                            onClick = { navController.navigate(Screen.Accounts.route) { popUpTo(Screen.Dashboard.route) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                            icon = { Icon(Icons.Default.Group, contentDescription = "الحسابات") },
+                            label = { Text("الحسابات", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = currentRoute == Screen.Transactions.route,
+                            onClick = { navController.navigate(Screen.Transactions.route) { popUpTo(Screen.Dashboard.route) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                            icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "العمليات") },
+                            label = { Text("العمليات", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = currentRoute == Screen.AiAdvisor.route,
+                            onClick = { navController.navigate(Screen.AiAdvisor.route) { popUpTo(Screen.Dashboard.route) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                            icon = { Icon(Icons.Default.Lightbulb, contentDescription = "المستشار") },
+                            label = { Text("المستشار", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = currentRoute == Screen.Settings.route || currentRoute == Screen.Trash.route,
+                            onClick = { navController.navigate(Screen.Settings.route) { popUpTo(Screen.Dashboard.route) { saveState = true }; launchSingleTop = true; restoreState = true } },
+                            icon = { Icon(Icons.Default.Settings, contentDescription = "الإعدادات") },
+                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
             val isCloudFrozen by viewModel.isCloudFrozen.collectAsState()
             val cloudClientId by viewModel.cloudClientId.collectAsState()
 
-            Surface(
+            Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
-                color = MaterialTheme.colorScheme.background
+                    .padding(innerPadding)
             ) {
-                if (isCloudFrozen && currentTab != 3) {
-                    FrozenBlockedScreen(
-                        clientId = cloudClientId,
-                        onGoToSettings = { currentTab = 3 }
-                    )
-                } else {
-                    when (currentTab) {
-                        0 -> DashboardScreen(
-                            viewModel = viewModel,
-                            onNavigateToAccount = navigateToAccountStatement
+                if (windowSizeClass != WindowSizeClass.COMPACT) {
+                    NavigationRail(
+                        modifier = Modifier.fillMaxHeight()
+                    ) {
+                        NavigationRailItem(
+                            selected = currentRoute == Screen.Dashboard.route,
+                            onClick = { navController.navigate(Screen.Dashboard.route) },
+                            icon = { Icon(Icons.Default.Dashboard, contentDescription = "الرئيسية") },
+                            label = { Text("الرئيسية") }
                         )
-                        1 -> AccountsScreen(
-                            viewModel = viewModel,
-                            onNavigateToAccount = navigateToAccountStatement
+                        NavigationRailItem(
+                            selected = currentRoute == Screen.Accounts.route,
+                            onClick = { navController.navigate(Screen.Accounts.route) },
+                            icon = { Icon(Icons.Default.Group, contentDescription = "الحسابات") },
+                            label = { Text("الحسابات") }
                         )
-                        2 -> EntriesScreen(
-                            viewModel = viewModel
+                        NavigationRailItem(
+                            selected = currentRoute == Screen.Transactions.route,
+                            onClick = { navController.navigate(Screen.Transactions.route) },
+                            icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "العمليات") },
+                            label = { Text("العمليات") }
                         )
-                        3 -> SettingsScreen(
-                            viewModel = viewModel,
-                            onNavigateToTrash = navigateToTrash
+                        NavigationRailItem(
+                            selected = currentRoute == Screen.AiAdvisor.route,
+                            onClick = { navController.navigate(Screen.AiAdvisor.route) },
+                            icon = { Icon(Icons.Default.Lightbulb, contentDescription = "المستشار") },
+                            label = { Text("المستشار") }
                         )
-                        4 -> AiAdvisorScreen(
-                            viewModel = viewModel
+                        NavigationRailItem(
+                            selected = currentRoute == Screen.Settings.route,
+                            onClick = { navController.navigate(Screen.Settings.route) },
+                            icon = { Icon(Icons.Default.Settings, contentDescription = "الإعدادات") },
+                            label = { Text("الإعدادات") }
                         )
-                        5 -> TrashScreen(
-                            viewModel = viewModel
+                        NavigationRailItem(
+                            selected = currentRoute == Screen.Trash.route,
+                            onClick = { navController.navigate(Screen.Trash.route) },
+                            icon = { Icon(Icons.Default.Delete, contentDescription = "سلة المحذوفات") },
+                            label = { Text("المحذوفات") }
                         )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    if (isCloudFrozen && currentRoute != Screen.Settings.route) {
+                        FrozenBlockedScreen(
+                            clientId = cloudClientId,
+                            onGoToSettings = { navController.navigate(Screen.Settings.route) }
+                        )
+                    } else {
+                        NavHost(
+                            navController = navController,
+                            startDestination = Screen.Dashboard.route
+                        ) {
+                            composable(Screen.Dashboard.route) {
+                                DashboardScreen(
+                                    viewModel = viewModel,
+                                    onNavigateToAccount = navigateToAccountStatement
+                                )
+                            }
+                            composable(Screen.Accounts.route) {
+                                AccountsScreen(
+                                    viewModel = viewModel,
+                                    onNavigateToAccount = navigateToAccountStatement
+                                )
+                            }
+                            composable(Screen.Transactions.route) {
+                                EntriesScreen(
+                                    viewModel = viewModel
+                                )
+                            }
+                            composable(Screen.Settings.route) {
+                                SettingsScreen(
+                                    viewModel = viewModel,
+                                    onNavigateToTrash = { navController.navigate(Screen.Trash.route) }
+                                )
+                            }
+                            composable(Screen.AiAdvisor.route) {
+                                AiAdvisorScreen(
+                                    viewModel = viewModel
+                                )
+                            }
+                            composable(Screen.Trash.route) {
+                                TrashScreen(
+                                    viewModel = viewModel
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -292,9 +360,8 @@ fun PinLockScreen(
     var enteredPin by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
 
-    val actualCorrectPin = correctPin.ifBlank { "1234" } // Fallback default PIN if enabled but empty
+    val actualCorrectPin = correctPin.ifBlank { "1234" }
 
-    // Helper when typing digits
     val onDigitClick: (String) -> Unit = { digit ->
         if (enteredPin.length < 4) {
             showError = false
@@ -320,7 +387,7 @@ fun PinLockScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scaffoldBackgroundColorKeyboardHelper() ?: MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -330,7 +397,6 @@ fun PinLockScreen(
                 .fillMaxWidth()
                 .padding(24.dp)
         ) {
-            // Header
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -364,7 +430,6 @@ fun PinLockScreen(
                 )
             }
 
-            // Indicator Dots
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -383,7 +448,6 @@ fun PinLockScreen(
                 }
             }
 
-            // Error Message
             if (showError) {
                 Text(
                     text = "❌ الرمز السري غير صحيح، يرجى المحاولة مرة أخرى",
@@ -396,7 +460,6 @@ fun PinLockScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Dial Pad Keypad
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -467,7 +530,7 @@ fun PinSetupScreen(
     onPinSet: (String) -> Unit,
     onSkip: () -> Unit
 ) {
-    var step by remember { mutableStateOf(1) } // 1 = Enter PIN, 2 = Confirm PIN
+    var step by remember { mutableStateOf(1) }
     var enteredPin by remember { mutableStateOf("") }
     var confirmedPin by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
@@ -506,7 +569,6 @@ fun PinSetupScreen(
             if (confirmedPin.isNotEmpty()) {
                 confirmedPin = confirmedPin.dropLast(1)
             } else {
-                // Return to step 1
                 step = 1
                 enteredPin = enteredPin.dropLast(1)
             }
@@ -516,7 +578,7 @@ fun PinSetupScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scaffoldBackgroundColorKeyboardHelper() ?: MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -526,7 +588,6 @@ fun PinSetupScreen(
                 .fillMaxWidth()
                 .padding(24.dp)
         ) {
-            // Header
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -564,7 +625,6 @@ fun PinSetupScreen(
                 )
             }
 
-            // Indicator Dots
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -584,7 +644,6 @@ fun PinSetupScreen(
                 }
             }
 
-            // Error or Help message
             if (showError) {
                 Text(
                     text = "❌ الرموز غير متطابقة! يرجى إعادة التأكيد مجدداً",
@@ -597,7 +656,6 @@ fun PinSetupScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Keyboard Dial Pad
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -662,7 +720,6 @@ fun PinSetupScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Option to skip / dismiss setup
             TextButton(
                 onClick = onSkip,
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.secondary)
@@ -670,15 +727,6 @@ fun PinSetupScreen(
                 Text("تخطي للرئيسية بدون قفل حالياً 🔓", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
-    }
-}
-
-// Extension to safely load default helper without crashing on null custom values
-private fun ColorScheme.scaffoldBackgroundColorKeyboardHelper(): Color? {
-    return try {
-        this.background
-    } catch(e: Exception) {
-        null
     }
 }
 
@@ -752,4 +800,3 @@ fun FrozenBlockedScreen(clientId: String, onGoToSettings: () -> Unit) {
         }
     }
 }
-
